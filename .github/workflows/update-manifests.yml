@@ -1,0 +1,48 @@
+name: Update Manifests
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        description: 'Service name, must match the chart directory in the manifests repo'
+        required: true
+        type: string
+      image_tag:
+        description: 'Image tag to deploy, produced by the build job'
+        required: true
+        type: string
+    secrets:
+      MANIFESTS_REPO_PAT:
+        description: 'Fine-grained PAT with write access to the manifests repo'
+        required: true
+
+jobs:
+  update-image-tag:
+    name: Bump image tag in Helm values
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout manifests repository
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: erickfranca/manifests-repo
+          token: ${{ secrets.MANIFESTS_REPO_PAT }}
+
+      - name: Update image tag with yq
+        run: |
+          yq -i '.image.tag = "${{ inputs.image_tag }}"' \
+            "charts/${{ inputs.service_name }}/values.yaml"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "Image tag unchanged, nothing to commit."
+            exit 0
+          fi
+
+          git add "charts/${{ inputs.service_name }}/values.yaml"
+          git commit -m "chore(${{ inputs.service_name }}): bump image tag to ${{ inputs.image_tag }}"
+          git push
